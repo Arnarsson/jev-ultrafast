@@ -3,6 +3,8 @@
 import { StalePage } from "./browser.js";
 import { MAX_STEPS, choose, fieldContext, fieldText } from "./policy.js";
 
+const actionKey = (a) => `${a.kind}|${a.node}|${a.label}`;
+
 export class Agent {
   constructor(browser, goal, settings, onUpdate = () => {}) {
     if (!goal.trim()) throw new Error("Supply a task");
@@ -11,6 +13,9 @@ export class Agent {
     this.onUpdate = onUpdate;
     this.pendingText = null;
     this.stopped = false;
+    // Actions that changed nothing since the page last changed. Not offered again until an action has an effect.
+    // Keyed by element and label, not snapshot: live pages (prices, timers) re-render without a real change.
+    this.ineffective = new Set();
     this.state = {
       goal: goal.trim(), page: null, decision: null, history: [], decisions: [], text_calls: [],
       status: "ready", elapsed_ms: 0, started_at: null, error: null,
@@ -41,7 +46,8 @@ export class Agent {
     if (!(await this.browser.fresh(state.page))) state.page = await this.browser.observe();
     state.decision = null;
     if (state.decisions.length >= MAX_STEPS * 2) throw new Error("Reached the model-call budget");
-    state.decision = await choose(state.page, state.goal, state.history, this.settings);
+    const page = { ...state.page, actions: state.page.actions.filter((a) => !this.ineffective.has(actionKey(a))) };
+    state.decision = await choose(page, state.goal, state.history, this.settings);
     state.decisions.push({ ...state.decision, fingerprint: state.page.fingerprint, elapsed_ms: this.elapsed() });
     state.status = "predicted";
     this.onUpdate(state);
@@ -110,6 +116,8 @@ export class Agent {
     const last = state.history[state.history.length - 1];
     last.page_changed = state.page.fingerprint !== page.fingerprint;
     last.url = state.page.url;
+    if (last.page_changed) this.ineffective.clear();
+    else if (action.kind !== "wait") this.ineffective.add(actionKey(action));
     const repeated = state.history.slice(-3);
     state.status =
       repeated.length === 3 && repeated.every((h) => h.page_changed === false && h.kind !== "wait") ? "blocked" : "ready";

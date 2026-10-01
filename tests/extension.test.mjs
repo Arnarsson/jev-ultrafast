@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import {
-  actionSpace, buildRequest, fieldContext, interpret, parseFieldText, postJson, validateChoice,
+  actionSpace, buildRequest, fieldContext, interpret, parseFieldText, postJson, today, validateChoice,
 } from "../extension/policy.js";
 
 const actions = [
@@ -89,6 +89,13 @@ test("fieldContext trims page text and history", () => {
   assert.equal(context.page.text.length, 6000);
   assert.equal(context.recent_actions.length, 6);
   assert.deepEqual(Object.keys(context.recent_actions[0]), ["action", "text"]);
+});
+
+test("the models are told today's date", () => {
+  assert.equal(today(new Date(2026, 9, 1)), "Thursday, October 1, 2026");
+  const { body } = buildRequest(page, "goal", [], "jev-latest", "D");
+  for (const q of Object.values(body.questions)) assert.equal(q.instructions.today, "D");
+  assert.equal(fieldContext("g", actions[0], { title: "T", text: "" }, [], "D").today, "D");
 });
 
 test("postJson retries overload, fails closed on errors", async () => {

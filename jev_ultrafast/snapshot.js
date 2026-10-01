@@ -67,6 +67,8 @@
       if (value!==null) base[key]=value;
     }
     if (['checkbox','radio'].includes(e.type)) base.checked=String(e.checked);
+    // Shows which field takes the next input, e.g. Departure vs Return in a shared calendar.
+    if (e===document.activeElement) base.focused='true';
     if (e.tagName==='SELECT') {
       for (const o of e.options) if (!o.selected && !o.disabled && !o.closest('optgroup[disabled]'))
         actions.push({...base,kind:'select',value:o.value,
