@@ -67,6 +67,18 @@ Chrome connects through [Browser Harness](https://github.com/browser-use/browser
 
 `TEXT_MODEL_API_KEY` is an OpenRouter key in the example configuration. The current demo uses `inception/mercury-2.5` with reasoning disabled. Gemini, GLM, and DeepSeek can also use the OpenAI-compatible text helper; configure the appropriate model, endpoint, and reasoning setting.
 
+## Chrome extension
+
+[`extension/`](extension) runs the same loop inside Chrome, on the tab you are looking at. No Python, no server, no remote-debugging setup.
+
+1. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked**, and pick the `extension/` folder.
+2. Click the ⚡ toolbar icon (or <kbd>⌘/Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd>) to open the side panel.
+3. Paste your TypeSafe and OpenRouter keys under **Settings** once, type a goal, and press **Run**.
+
+It drives the current tab through `chrome.debugger`, so Chrome shows its "started debugging this browser" bar while a run is active. Keys stay in the extension's local storage and are sent only to `api.typesafe.ai` and `openrouter.ai`. For a local install without pasting, put `{"typesafeKey": "…", "textKey": "…"}` in `extension/config.local.json` (git-ignored). Closing the side panel stops a run.
+
+The extension is a line-for-line port of `agent.py`, `model.py`, and `browser.py` to `extension/agent.js`, `policy.js`, and `browser.js`; `extension/snapshot.js` must stay identical to `jev_ultrafast/snapshot.js` (a test enforces it). It observes your real window instead of a fixed 1120×780 viewport.
+
 ## Use the library
 
 ```python
@@ -132,6 +144,7 @@ uv run ruff check .
 uv run pytest
 node --check jev_ultrafast/static/app.js
 node --check jev_ultrafast/snapshot.js
+node --test tests/
 uv build
 ```
 

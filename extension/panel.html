@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Jev Ultrafast</title>
+    <link rel="stylesheet" href="panel.css" />
+  </head>
+  <body>
+    <header>
+      <span class="mark">⚡</span>
+      <h1>Jev</h1>
+      <span id="status" class="pill" data-status="idle">Idle</span>
+    </header>
+
+    <form id="task">
+      <textarea id="goal" rows="4" placeholder="What should happen in this tab?&#10;e.g. Find one-way flights from Copenhagen to Reykjavik on November 5, 2026" required></textarea>
+      <div class="row">
+        <button id="run" type="submit">Run <kbd id="shortcut">⌘↵</kbd></button>
+        <button id="stop" type="button" class="secondary" hidden>Stop</button>
+      </div>
+      <p id="tab" class="muted"></p>
+    </form>
+
+    <section id="result" hidden></section>
+
+    <ol id="steps"></ol>
+
+    <details id="settings">
+      <summary>Settings</summary>
+      <label>TypeSafe API key <input id="typesafeKey" type="password" autocomplete="off" /></label>
+      <label>Text model API key (OpenRouter) <input id="textKey" type="password" autocomplete="off" /></label>
+      <label>Text model <input id="textModel" placeholder="inception/mercury-2.5" /></label>
+      <label>TypeSafe model <input id="typesafeModel" placeholder="jev-latest" /></label>
+      <p class="muted">Keys stay in this browser's extension storage and are only sent to api.typesafe.ai and openrouter.ai.</p>
+      <button id="save" type="button" class="secondary">Save</button>
+      <span id="saved" class="muted" hidden>Saved</span>
+    </details>
+
+    <script type="module" src="panel.js"></script>
+  </body>
+</html>

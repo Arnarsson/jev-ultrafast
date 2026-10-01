@@ -8,3 +8,5 @@ artifacts/
 *.egg-info/
 
 dist/
+extension/config.local.json
+.impeccable/
