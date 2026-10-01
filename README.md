@@ -77,6 +77,10 @@ Chrome connects through [Browser Harness](https://github.com/browser-use/browser
 
 It drives the current tab through `chrome.debugger`, so Chrome shows its "started debugging this browser" bar while a run is active. Keys stay in the extension's local storage and are sent only to `api.typesafe.ai` and `openrouter.ai`. For a local install without pasting, put `{"typesafeKey": "…", "textKey": "…"}` in `extension/config.local.json` (git-ignored). Closing the side panel stops a run.
 
+**Approval for serious actions.** Before any click that may buy, pay, book, reserve, confirm, send, post, delete, subscribe or sign up, before typing into card, password or ID fields, and before any button on a checkout or payment page, the run pauses and the panel asks *Approve* or *Deny and stop*. The check is code ([`extension/guard.js`](extension/guard.js)), not a prompt, and applies to remembered steps too. With no one to ask, the answer is no.
+
+**Learned steps.** After a run ends Done, the panel remembers its effective steps for that page ([`extension/recipes.js`](extension/recipes.js)). Rerunning the same goal the same day replays them without model calls (Tokyo → Reykjavík round trip: 9–10 s first, ~3 s after). A different goal on the same page replays only goal-independent steps (fields, buttons); cities, dates and prices go to the model. Done is still the model's call. If a run was wrong, **Wrong? Forget this** on the result card drops it; **Settings → Forget** drops everything.
+
 The extension is a line-for-line port of `agent.py`, `model.py`, and `browser.py` to `extension/agent.js`, `policy.js`, and `browser.js`; `extension/snapshot.js` must stay identical to `jev_ultrafast/snapshot.js` (a test enforces it). It observes your real window instead of a fixed 1120×780 viewport.
 
 ## Use the library

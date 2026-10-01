@@ -28,6 +28,15 @@
       <button id="stop" type="button" class="secondary">Stop</button>
     </section>
 
+    <section id="approval" class="approval" hidden role="alertdialog" aria-labelledby="approvalTitle">
+      <strong id="approvalTitle">Jev needs your OK</strong>
+      <p id="approvalWhat"></p>
+      <p id="approvalWhy" class="muted"></p>
+      <div class="actions">
+        <button id="approve" type="button">Approve</button>
+        <button id="deny" type="button" class="secondary">Deny and stop</button>
+      </div>
+    </section>
     <section id="result" hidden aria-live="polite"></section>
 
     <ol id="steps" aria-label="Steps"></ol>
@@ -51,6 +60,10 @@
       <div class="row">
         <button id="save" type="button" class="secondary">Save</button>
         <span id="saved" class="muted" hidden>Saved</span>
+      </div>
+      <div class="memory">
+        <span id="memory" class="muted"></span>
+        <button id="forget" type="button" class="secondary" hidden>Forget</button>
       </div>
     </details>
 

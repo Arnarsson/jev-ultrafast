@@ -127,3 +127,72 @@ test("a stale decision is reused once, only when its element remains and nothing
   agent.ineffective.add("click|2|Next");
   assert.equal(reuse(settled), null);
 });
+
+test("recipes keep effective steps and replay only goal-independent ones on a new goal", async () => {
+  const { recordRecipe, findRecipe, saveRecipe, structural, pageKey } = await import("../extension/recipes.js");
+  const h = (kind, action, extra = {}) => ({ kind, action, role: "button", operation: "CLICK", page_changed: true, ...extra });
+  const state = {
+    goal: "Tokyo to Reykjavik", start_url: "https://www.google.com/travel/flights?hl=en",
+    history: [
+      h("fill", "Where from?", { role: "combobox", operation: "TYPE_TEXT", text: "Tokyo" }),
+      h("click", "Tokyo, Japan"),
+      h("click", "Open Return", { page_changed: false }),
+      h("wait", "Wait"),
+      h("click", "Thursday, October 1, 2026"),
+      h("click", "Search"),
+    ],
+  };
+  const recipe = recordRecipe(state, "D1");
+  assert.equal(recipe.key, "https://www.google.com/travel/flights");
+  assert.deepEqual(recipe.steps.map((s) => s.label), ["Where from?", "Tokyo, Japan", "Thursday, October 1, 2026", "Search"]);
+  assert.deepEqual(recipe.steps.map((s) => structural(s, recipe)), [true, false, false, true]);
+  const saved = saveRecipe(saveRecipe([], recipe), { ...recipe, saved_at: 2 });
+  assert.equal(saved.length, 1);
+  assert.equal(findRecipe(saved, "https://www.google.com/travel/flights?x=1", "Tokyo to Reykjavik", "D1").exact, true);
+  assert.equal(findRecipe(saved, "https://www.google.com/travel/flights", "Tokyo to Reykjavik", "D2").exact, false);
+  assert.equal(findRecipe(saved, "https://example.com/", "x", "D1"), null);
+  assert.equal(pageKey("not a url"), "not a url");
+  const { sameLabel } = await import("../extension/recipes.js");
+  assert.ok(sameLabel("Thursday, October 1, 2026 ????", "Thursday, October 1, 2026 , 16380 Danish kroner"));
+  assert.ok(!sameLabel("Thursday, October 1, 2026", "Thursday, October 15, 2026"));
+  assert.ok(!sameLabel("Add", "Remove"));
+  assert.ok(!sameLabel("Page 1", "Page 10"));
+  assert.ok(sameLabel("Search", "Search"));
+});
+
+test("serious actions are recognised; ordinary browsing is not", async () => {
+  const { seriousReason } = await import("../extension/guard.js");
+  const page = { url: "https://shop.test/product/1" };
+  const click = (label, role = "button") => seriousReason({ kind: "click", role, label }, page);
+  for (const label of ["Buy now", "Place your order", "Pay €12", "Book", "Confirm booking", "Send", "Delete account", "Subscribe"])
+    assert.ok(click(label), label);
+  for (const label of ["Search", "Accept all", "Next", "Thursday, October 1, 2026", "Open Departure", "Bookmarks", "Payload docs"])
+    assert.equal(click(label), null, label);
+  assert.ok(seriousReason({ kind: "fill", label: "Card number" }, page));
+  assert.equal(seriousReason({ kind: "fill", label: "Where from?" }, page), null);
+  assert.ok(seriousReason({ kind: "click", role: "button", label: "Continue" }, { url: "https://shop.test/checkout/step2" }));
+});
+
+test("the agent refuses a serious action unless approved", async () => {
+  const { Agent } = await import("../extension/agent.js");
+  const page = { url: "https://shop.test/p", fingerprint: "f", actions: [{ id: "e1", node: 1, kind: "click", role: "button", label: "Buy now" }] };
+  let acted = 0;
+  const browser = { fresh: async () => true, act: async () => void acted++, observe: async () => page };
+  for (const [answer, expected] of [[false, 0], [true, 1]]) {
+    acted = 0;
+    let asked = null;
+    const agent = new Agent(browser, "buy it", {}, () => {}, { approve: async (r) => ((asked = r), answer) });
+    agent.state.page = page;
+    agent.state.decision = { choice: "e1", probabilities: {}, operation: "CLICK" };
+    await agent.act();
+    assert.equal(asked.action, "Buy now");
+    assert.equal(acted, expected);
+    assert.equal(agent.stopped, !answer);
+  }
+  const silent = new Agent(browser, "buy it", {});
+  silent.state.page = page;
+  silent.state.decision = { choice: "e1", probabilities: {}, operation: "CLICK" };
+  acted = 0;
+  await silent.act();
+  assert.equal(acted, 0); // no approver: refused
+});

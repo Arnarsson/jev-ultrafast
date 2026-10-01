@@ -14,7 +14,9 @@ WAIT only when the needed control is absent/disabled, or submitted results are s
 If Search/Submit is visible and the required fields are ready, CLICK it immediately.
 Recent WAIT actions are not evidence of loading. Prefer a useful visible control over WAIT.
 DONE requires visible evidence that ALL requirements are satisfied. If asked to open a result,
-a matching link is not enough. BLOCKED means no supported operation can make progress.`;
+a matching link is not enough. BLOCKED means no supported operation can make progress.
+Never buy, pay, book, send, post, delete or sign up unless the goal explicitly asks for it; choose DONE
+at the step before. The user must approve any such step.`;
 
 export const TARGET = `Choose the best observed target if the next operation is the one specified in this question.
 Use the user's entire goal, field values, nearby text, and recent actions. This question chooses only
@@ -206,6 +208,8 @@ export function fieldContext(goal, action, page, history, date = today()) {
   };
 }
 
+export class NoFieldValue extends Error {}
+
 export function parseFieldText(content) {
   let value;
   try {
@@ -215,7 +219,7 @@ export function parseFieldText(content) {
       throw new Error();
     }
   } catch {
-    throw new Error("Text helper returned no valid field value; nothing typed.");
+    throw new NoFieldValue("Text helper returned no valid field value; nothing typed.");
   }
   return value;
 }

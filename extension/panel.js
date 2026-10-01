@@ -1,5 +1,7 @@
 import { Agent } from "./agent.js";
 import { Browser } from "./browser.js";
+import { today } from "./policy.js";
+import { findRecipe, recordRecipe, saveRecipe } from "./recipes.js";
 
 const $ = (id) => document.getElementById(id);
 const FIELDS = ["typesafeKey", "textKey", "textModel", "typesafeModel"];
@@ -159,7 +161,8 @@ function render(state) {
   const steps = $("steps");
   const count = state.history.length;
   $("count").textContent = plural(count, "action");
-  $("phase").textContent = state.status === "predicted" || state.status === "ready" ? "choosing next action…" : "acting…";
+  $("phase").textContent = state.status === "approval" ? "waiting for your OK…"
+    : state.status === "predicted" || state.status === "ready" ? "choosing next action…" : "acting…";
   const stepNode = (h) => {
     const li = el("li");
     const body = el("span", "target");
@@ -167,6 +170,11 @@ function render(state) {
     body.append(el("span", "label", h.action));
     body.title = h.action;
     if (h.text) body.append(" ", el("span", "typed", `“${h.text}”`));
+    if (h.replayed) {
+      const m = el("span", "remembered", "remembered");
+      m.title = "Replayed from a previous successful run, without a model call";
+      body.append(m);
+    }
     if (h.page_changed === false) {
       const m = el("span", "nochange", "no change");
       m.title = "The page looked the same after this action";
@@ -236,7 +244,8 @@ function finish(state) {
   const head = el("div", "head");
   head.append(
     el("span", "outcome", OUTCOMES[status] ?? status),
-    el("span", "stats", `${seconds(state.elapsed_ms)} · ${plural(state.history.length, "action")}`),
+    el("span", "stats", `${seconds(state.elapsed_ms)} · ${plural(state.history.length, "action")}` +
+      (state.history.some((h) => h.replayed) ? ` · ${state.history.filter((h) => h.replayed).length} from memory` : "")),
   );
   result.replaceChildren(head);
   if (status !== "error" && state.page?.url) {
@@ -245,7 +254,8 @@ function finish(state) {
     url.title = readableUrl(state.page.url);
     result.append(url);
   }
-  const note = status === "error" ? friendlyError(state.error) : EXPLAIN[status];
+  const note = status === "error" ? friendlyError(state.error)
+    : state.declined ? `You declined “${state.declined}”. Nothing was clicked or typed for it.` : EXPLAIN[status];
   if (note) result.append(el("p", "note", note));
   if (status === "error" && state.error) {
     const d = el("details", "raw");
@@ -253,13 +263,28 @@ function finish(state) {
     result.append(d);
   }
   const actions = el("div", "actions");
+  if (state.learned) {
+    result.append(el("p", "note", "Remembered for next time on this site."));
+    const forget = el("button", "secondary", "Wrong? Forget this");
+    forget.type = "button";
+    forget.title = "Don't replay this run's steps next time";
+    forget.addEventListener("click", async () => {
+      const { recipes = [] } = await chrome.storage.local.get("recipes");
+      const { key, goal } = state.learned;
+      await chrome.storage.local.set({ recipes: recipes.filter((r) => !(r.key === key && r.goal === goal)) });
+      forget.disabled = true;
+      forget.textContent = "Forgotten";
+      renderMemory();
+    });
+    actions.append(forget);
+  }
   const again = el("button", "secondary", "Run again");
   again.type = "button";
   again.addEventListener("click", () => run());
   const edit = el("button", "secondary", "Edit goal");
   edit.type = "button";
   edit.addEventListener("click", () => ($("goal").focus(), $("goal").select()));
-  actions.append(again, edit);
+  actions.prepend(again, edit);
   result.append(actions);
   result.hidden = false;
   setStatus(status);
@@ -302,9 +327,17 @@ async function run(event) {
     // Chrome pages (chrome://, new tab, Web Store) can't be controlled; start from Google in a fresh tab instead.
     if (!tab || !/^https?:/.test(tab.url || "")) tab = await openTab(START_URL, tab?.windowId);
     browser = await Browser.attach(tab.id);
-    agent = new Agent(browser, goal, settings, render);
+    const { recipes = [] } = await chrome.storage.local.get("recipes");
+    const day = today();
+    agent = new Agent(browser, goal, settings, render, { learned: findRecipe(recipes, tab.url, goal, day), approve: askApproval });
     const state = await agent.run();
     window.lastRun = state; // inspectable from DevTools
+    const learned = state.status === "done" && recordRecipe(state, day);
+    if (learned) {
+      await chrome.storage.local.set({ recipes: saveRecipe(recipes, learned) });
+      state.learned = learned;
+    }
+    renderMemory();
     render(state);
     finish(state);
   } catch (error) {
@@ -324,12 +357,45 @@ $("task").addEventListener("submit", run);
 $("goal").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) run(e);
 });
+// Serious actions (buy, pay, book, send, delete, sensitive fields) wait here for the user.
+let answerApproval = null;
+function askApproval(request) {
+  const verb = request.kind === "fill" ? `Type “${request.text ?? ""}” into` : "Click";
+  $("approvalWhat").textContent = `${verb} “${request.action}” on ${hostOf(request.url)}`;
+  $("approvalWhy").textContent = `This ${request.reason}.`;
+  $("approval").hidden = false;
+  $("deny").focus(); // a stray Enter must not approve a purchase
+  return new Promise((resolve) => {
+    answerApproval = (ok) => {
+      answerApproval = null;
+      $("approval").hidden = true;
+      resolve(ok);
+    };
+  });
+}
+$("approve").addEventListener("click", () => answerApproval?.(true));
+$("deny").addEventListener("click", () => answerApproval?.(false));
+
 $("stop").addEventListener("click", () => {
+  answerApproval?.(false);
   $("stop").disabled = true;
   $("phase").textContent = "stopping…";
   agent?.stop();
 });
 $("save").addEventListener("click", saveSettings);
+$("forget").addEventListener("click", async () => {
+  await chrome.storage.local.remove("recipes");
+  renderMemory();
+});
+
+async function renderMemory() {
+  const { recipes = [] } = await chrome.storage.local.get("recipes");
+  const sites = new Set(recipes.map((r) => hostOf(r.key))).size;
+  $("memory").textContent = recipes.length
+    ? `Remembers ${plural(recipes.length, "task")} on ${plural(sites, "site")}.`
+    : "Nothing learned yet. Successful runs are remembered.";
+  $("forget").hidden = !recipes.length;
+}
 chrome.tabs.onActivated.addListener(() => !agent && showTab());
 chrome.tabs.onUpdated.addListener((_id, info) => info.title && !agent && showTab());
 
@@ -338,4 +404,5 @@ window.__panel = { render, finish, setRunning, setStatus, showStart, renderStart
 
 loadSettings();
 renderStart();
+renderMemory();
 showTab();

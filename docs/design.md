@@ -31,3 +31,17 @@ The audit also found that treating every INPUT as editable misclassified checkbo
 Sixty browser actions and 120 decision requests bound a run. Up to 250 action candidates are retained; truncated candidates cannot be selected. The service stays loopback-only, serializes inspector actions, and checks Host, Origin, and a local request token. Credentials remain server-side. Tabs share the existing Chrome profile.
 
 The policy is generic, but two websites do not establish broad reliability. Name resolution covers common labels, ARIA references, and text; it is not the browser's full accessibility algorithm. Shadow roots, frames, canvas, uploads, nested scrolling, pop-ups, and complex keyboard interactions can block progress. A valid action can still be wrong. Independent checks, rather than the model's DONE choice, determine whether the demonstrated task succeeded.
+
+## Extension: learned steps (recipes), 2026-10-01
+
+Goal: repeat tasks without model calls. After a run ends DONE, the panel saves the
+executed steps (minus waits and steps that changed nothing) keyed by the start page's
+origin+path. On a later run from the same page:
+
+- exact mode (same goal text, same calendar day): every saved step is replayed when an
+  element with the same kind, role and label is present; saved typed text is reused.
+- otherwise only *structural* steps replay: fills (text regenerated from the new goal)
+  and clicks whose label has no digits and no word from the saved typed values. Value
+  steps (suggestions, dates, prices) go to the model.
+- a model action of the same kind/role as the next saved step advances the pointer.
+- DONE is always the model's call; freshness checks still run before every input.
