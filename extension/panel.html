@@ -8,33 +8,50 @@
   </head>
   <body>
     <header>
-      <span class="mark">⚡</span>
+      <span class="mark" aria-hidden="true">⚡</span>
       <h1>Jev</h1>
-      <span id="status" class="pill" data-status="idle">Idle</span>
+      <span id="status" class="pill" data-status="idle" role="status" aria-live="polite">Ready</span>
     </header>
 
     <form id="task">
-      <textarea id="goal" rows="4" placeholder="What should happen in this tab?&#10;e.g. Find one-way flights from Copenhagen to Reykjavik on November 5, 2026" required></textarea>
+      <label for="goal" class="sr">Goal</label>
+      <textarea id="goal" rows="3" placeholder="What should happen in this tab?" required></textarea>
       <div class="row">
         <button id="run" type="submit">Run <kbd id="shortcut">⌘↵</kbd></button>
-        <button id="stop" type="button" class="secondary" hidden>Stop</button>
       </div>
-      <p id="tab" class="muted"></p>
+      <p id="tab" class="muted tab" title=""></p>
     </form>
 
-    <section id="result" hidden></section>
+    <section id="live" class="live" hidden aria-label="Live run">
+      <div class="clock"><span id="timer" class="timer">0.0</span><span class="unit">s</span></div>
+      <div class="meta"><span id="count">0 actions</span><span id="phase" class="phase">starting…</span></div>
+      <button id="stop" type="button" class="secondary">Stop</button>
+    </section>
 
-    <ol id="steps"></ol>
+    <section id="result" hidden aria-live="polite"></section>
+
+    <ol id="steps" aria-label="Steps"></ol>
+
+    <section id="start">
+      <div id="recentWrap" hidden>
+        <h2>Recent</h2>
+        <ul id="recent" class="list"></ul>
+      </div>
+      <h2>Try</h2>
+      <div id="chips" class="chips"></div>
+    </section>
 
     <details id="settings">
-      <summary>Settings</summary>
+      <summary><span>Settings</span><span id="keyState" class="keystate"></span></summary>
       <label>TypeSafe API key <input id="typesafeKey" type="password" autocomplete="off" /></label>
       <label>Text model API key (OpenRouter) <input id="textKey" type="password" autocomplete="off" /></label>
       <label>Text model <input id="textModel" placeholder="inception/mercury-2.5" /></label>
       <label>TypeSafe model <input id="typesafeModel" placeholder="jev-latest" /></label>
       <p class="muted">Keys stay in this browser's extension storage and are only sent to api.typesafe.ai and openrouter.ai.</p>
-      <button id="save" type="button" class="secondary">Save</button>
-      <span id="saved" class="muted" hidden>Saved</span>
+      <div class="row">
+        <button id="save" type="button" class="secondary">Save</button>
+        <span id="saved" class="muted" hidden>Saved</span>
+      </div>
     </details>
 
     <script type="module" src="panel.js"></script>
