@@ -152,6 +152,8 @@ async function rememberGoal(goal) {
   await chrome.storage.local.set({ recent: [goal, ...recent.filter((g) => g !== goal)].slice(0, 5) });
 }
 
+const OPS = { TYPE_TEXT: "type", CLICK: "click", SELECT: "select", WAIT: "wait" };
+
 // --- steps ---------------------------------------------------------------------
 function render(state) {
   const steps = $("steps");
@@ -161,8 +163,9 @@ function render(state) {
   const stepNode = (h) => {
     const li = el("li");
     const body = el("span", "target");
-    body.append(el("span", "op", h.operation));
-    body.append(h.action);
+    body.append(el("span", "op", OPS[h.operation] ?? h.operation));
+    body.append(el("span", "label", h.action));
+    body.title = h.action;
     if (h.text) body.append(" ", el("span", "typed", `“${h.text}”`));
     if (h.page_changed === false) {
       const m = el("span", "nochange", "no change");
@@ -206,6 +209,16 @@ function friendlyError(message = "") {
   if (/debugger|attach|cannot access|another debugger/i.test(message)) return "Jev couldn't take control of this tab. Close DevTools on it, or switch to a normal web page.";
   return "The run stopped with an error.";
 }
+// Host and path only: query strings like Google Flights' ?tfs= are noise to a person.
+function shortUrl(url = "") {
+  try {
+    const u = new URL(url);
+    return readableUrl(u.hostname.replace(/^www\./, "") + (u.pathname === "/" ? "" : u.pathname));
+  } catch {
+    return url;
+  }
+}
+
 function hostOf(url = "") {
   try {
     return new URL(url).hostname.replace(/^www\./, "");
@@ -228,7 +241,9 @@ function finish(state) {
   result.replaceChildren(head);
   if (status !== "error" && state.page?.url) {
     result.append(el("p", "page", state.page.title || hostOf(state.page.url)));
-    result.append(el("p", "url", readableUrl(state.page.url)));
+    const url = el("p", "url", shortUrl(state.page.url));
+    url.title = readableUrl(state.page.url);
+    result.append(url);
   }
   const note = status === "error" ? friendlyError(state.error) : EXPLAIN[status];
   if (note) result.append(el("p", "note", note));
