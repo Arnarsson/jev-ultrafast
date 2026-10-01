@@ -106,3 +106,24 @@ test("postJson retries overload, fails closed on errors", async () => {
   await assert.rejects(postJson("u", "k", {}, async () => ({ status: 401, ok: false })), /HTTP 401; no action/);
   await assert.rejects(postJson("u", "k", {}, async () => { throw new TypeError("net"); }), /connection failed/);
 });
+
+test("a stale decision is reused once, only when its element remains and nothing new appeared", async () => {
+  const { Agent } = await import("../extension/agent.js");
+  const button = (node, label, id) => ({ id, node, kind: "click", label });
+  const old = { url: "https://x.test/p", title: "t", actions: [button(1, "Search", "e1"), button(2, "Next", "e2")] };
+  const decision = { choice: "e2", probabilities: { e2: 0.9 } };
+  const agent = new Agent({}, "goal", {});
+  const reuse = (page) => ((agent.retry = { decision, page: old }), agent.reuse(page));
+
+  const settled = { ...old, actions: [button(2, "Next", "e1"), button(1, "Search", "e2")] };
+  assert.deepEqual([reuse(settled).choice, reuse(settled).reused], ["e1", true]);
+  assert.equal(agent.retry, null); // consumed
+  assert.equal(reuse({ ...old, actions: [...old.actions, button(3, "Tokyo, Japan", "e3")] }), null);
+  assert.equal(reuse({ ...old, actions: [button(1, "Search", "e1")] }), null);
+  assert.equal(reuse({ ...old, url: "https://x.test/other" }), null);
+  assert.equal(reuse({ ...settled, url: "https://x.test/p?tfs=x" }).choice, "e1"); // same page, rewritten query
+  assert.equal(reuse({ ...old, actions: [button(1, "Search", "e1"), button(2, "Next, 9,356 kr", "e2")] }).choice, "e2");
+  assert.equal(reuse({ ...old, actions: [button(1, "Search", "e1"), button(2, "Previous", "e2")] }), null);
+  agent.ineffective.add("click|2|Next");
+  assert.equal(reuse(settled), null);
+});

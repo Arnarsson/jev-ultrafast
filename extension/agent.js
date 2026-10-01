@@ -34,6 +34,9 @@ export class Agent {
     } catch (error) {
       if (!(error instanceof StalePage)) throw error;
       state.stale = [...(state.stale ?? []), error.message].slice(-20);
+      // Keep the rejected decision: if the page only settled (prices, animations), it can run without a new model call.
+      this.retry = this.lastDecision;
+      this.lastDecision = null;
       state.decision = null;
       state.status = "ready";
       state.page = await this.browser.observe();
@@ -45,12 +48,55 @@ export class Agent {
     const state = this.state;
     if (!(await this.browser.fresh(state.page))) state.page = await this.browser.observe();
     state.decision = null;
+    const reused = this.reuse(state.page);
+    if (reused) {
+      // Not recorded as lastDecision: if this goes stale too, the model chooses again.
+      state.decision = reused;
+      state.decisions.push({ ...reused, fingerprint: state.page.fingerprint, elapsed_ms: this.elapsed() });
+      state.status = "predicted";
+      this.onUpdate(state);
+      return;
+    }
     if (state.decisions.length >= MAX_STEPS * 2) throw new Error("Reached the model-call budget");
     const page = { ...state.page, actions: state.page.actions.filter((a) => !this.ineffective.has(actionKey(a))) };
     state.decision = await choose(page, state.goal, state.history, this.settings);
     state.decisions.push({ ...state.decision, fingerprint: state.page.fingerprint, elapsed_ms: this.elapsed() });
+    this.lastDecision = { decision: state.decision, page: state.page };
     state.status = "predicted";
     this.onUpdate(state);
+  }
+
+  // A stale decision is reused once, only if its element is still there and nothing new appeared
+  // (a new autocomplete list or dialog deserves a fresh choice). act() still checks freshness before input.
+  reuse(page) {
+    const retry = this.retry;
+    this.retry = null;
+    if (!retry) return null;
+    const miss = (reason) => ((this.state.reuse_misses ||= []).push(reason), null);
+    const { decision, page: old } = retry;
+    const before = new Set(old.actions.map((a) => a.node).filter((n) => n != null));
+    // Query strings change as fields commit (Google Flights rewrites ?tfs=); new elements are checked below.
+    const where = (url) => { try { const u = new URL(url); return u.origin + u.pathname; } catch { return url; } };
+    if (where(page.url) !== where(old.url)) return miss("url");
+    const added = page.actions.filter((a) => a.node != null && !before.has(a.node));
+    if (added.length) return miss(`new elements: ${added.slice(0, 3).map((a) => a.label).join(" | ")}`);
+    let choice = decision.choice;
+    if (choice === "BLOCKED") return miss("blocked");
+    if (choice === "DONE") {
+      if (page.title !== old.title) return miss("title");
+    } else {
+      const chosen = old.actions.find((a) => a.id === choice);
+      // Same element; a label may only grow or shrink by loaded detail ("Nov 5" -> "Nov 5, 9,356 kr").
+      const now = chosen && page.actions.find((a) => a.kind === chosen.kind && a.node === chosen.node &&
+        (a.label.startsWith(chosen.label) || chosen.label.startsWith(a.label)));
+      if (!now) return miss(`gone: ${chosen?.label}`);
+      if (this.ineffective.has(actionKey(now))) return miss("ineffective");
+      choice = now.id;
+    }
+    return {
+      ...decision, choice, latency_ms: 0, reused: true,
+      probabilities: { [choice]: decision.probabilities[decision.choice] },
+    };
   }
 
   async act() {
@@ -64,6 +110,7 @@ export class Agent {
         state.status = "ready";
         throw new StalePage("Page changed since the decision. Choose again.");
       }
+      this.lastDecision = null;
       state.status = selected === "DONE" ? "done" : "blocked";
       state.elapsed_ms = this.elapsed();
       return;
@@ -90,6 +137,7 @@ export class Agent {
     }
     // act() checks freshness immediately before input, including after text generation.
     await this.browser.act(action, page, text);
+    this.lastDecision = null; // executed: never replay it
     this.pendingText = null;
     state.elapsed_ms = this.elapsed();
     // Record execution before observing. A stale post-action observation must not erase the action.
