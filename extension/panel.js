@@ -8,6 +8,8 @@ const IS_MAC = /Mac/.test(navigator.platform);
 // ?tab=<id> lets the panel be opened as a normal page and aimed at another tab (used for testing).
 const FIXED_TAB = Number(new URLSearchParams(location.search).get("tab")) || null;
 
+const START_URL = "https://www.google.com/?hl=en";
+
 let agent = null;
 
 async function loadSettings() {
@@ -37,6 +39,20 @@ async function targetTab() {
   if (FIXED_TAB) return chrome.tabs.get(FIXED_TAB);
   const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   return tab;
+}
+
+async function openTab(url, windowId) {
+  const tab = await chrome.tabs.create({ url, windowId, active: true });
+  await new Promise((resolve) => {
+    const done = (id, info) => {
+      if (id !== tab.id || info.status !== "complete") return;
+      chrome.tabs.onUpdated.removeListener(done);
+      resolve();
+    };
+    chrome.tabs.onUpdated.addListener(done);
+    setTimeout(() => (chrome.tabs.onUpdated.removeListener(done), resolve()), 10000);
+  });
+  return chrome.tabs.get(tab.id);
 }
 
 async function showTab() {
@@ -121,8 +137,9 @@ async function run(event) {
   setStatus("running");
   let browser = null;
   try {
-    const tab = await targetTab();
-    if (!tab || !/^https?:/.test(tab.url || "")) throw new Error("Open a normal web page (http/https) in this tab first.");
+    let tab = await targetTab();
+    // Chrome pages (chrome://, new tab, Web Store) can't be controlled; start from Google in a fresh tab instead.
+    if (!tab || !/^https?:/.test(tab.url || "")) tab = await openTab(START_URL, tab?.windowId);
     browser = await Browser.attach(tab.id);
     agent = new Agent(browser, goal, settings, render);
     const state = await agent.run();
