@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -20,7 +21,9 @@ class StalePage(ValueError):
 class Browser:
     def __init__(self, url):
         ensure_daemon()
-        self.target = cdp("Target.createTarget", url="about:blank", background=True)["targetId"]
+        # JEV_FOREGROUND=1 opens the owned tab in front, e.g. in a dedicated agent Chrome you want to watch.
+        foreground = os.environ.get("JEV_FOREGROUND") == "1"
+        self.target = cdp("Target.createTarget", url="about:blank", background=not foreground)["targetId"]
         self.session = cdp("Target.attachToTarget", targetId=self.target, flatten=True)["sessionId"]
         self.call("Emulation.setDeviceMetricsOverride", width=1120, height=780, deviceScaleFactor=1, mobile=False)
         # Keep rAF/menus rendering in an owned background tab, without activating the user's Chrome tab.

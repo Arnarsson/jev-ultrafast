@@ -13,8 +13,9 @@ from .agent import Agent
 from .questions import MAX_STEPS
 
 ROOT = Path(__file__).parent
+HOST = os.environ.get("TYPESAFE_DEMO_HOST", "127.0.0.1")
 PORT = int(os.environ.get("TYPESAFE_DEMO_PORT", "8766"))
-ORIGIN = f"http://127.0.0.1:{PORT}"
+ORIGIN = f"http://{HOST}:{PORT}"
 TOKEN = secrets.token_urlsafe(32)
 LOCK = threading.Lock()
 AGENT = None
@@ -79,7 +80,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def do_GET(self):
-        if self.headers.get("Host") != f"127.0.0.1:{PORT}":
+        if self.headers.get("Host") != f"{HOST}:{PORT}":
             return self.send(403, "Forbidden", "text/plain")
         path = urlparse(self.path).path
         if path == "/api/state":
@@ -103,7 +104,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if (
-            self.headers.get("Host") != f"127.0.0.1:{PORT}"
+            self.headers.get("Host") != f"{HOST}:{PORT}"
             or self.headers.get("X-Demo-Token") != TOKEN
             or self.headers.get("Origin") not in (None, ORIGIN)
         ):
@@ -131,7 +132,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     load_environment()
     atexit.register(close_browser)
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"Jev Ultrafast: {ORIGIN}", flush=True)
     try:
         server.serve_forever()
